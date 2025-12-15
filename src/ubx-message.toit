@@ -198,6 +198,10 @@ class Message:
       0x88: "SENIF",     // M8+.
       0x8D: "SLAS",      // M8+.
       0x93: "BATCH",     // M8+.
+
+      0x8A: "VALSET",    // M8/9+.
+      0x8B: "VALGET",    // M8/9+.
+      0x8C: "VALDEL",    // M8/9+.
     },
 
     // MON (0x0A).
@@ -363,6 +367,14 @@ class Message:
         return CfgNav5.private_ payload
       if id == CfgGnss.ID:
         return CfgGnss.private_ payload
+      if id == CfgGnss.ID:
+        return CfgGnss.private_ payload
+      if id == CfgValGet.ID:
+        return CfgValGet.private_ payload
+      if id == CfgValSet.ID:
+        return CfgValSet.private_ payload
+      if id == CfgValDel.ID:
+        return CfgValDel.private_ payload
 
     return Message.private_ cls id payload
 
@@ -523,6 +535,18 @@ class Message:
   /** Helper to insert an uint32 into payload index. */
   put-uint32_ index value --payload=payload -> none:
     LITTLE-ENDIAN.put-uint32 payload index value
+
+  /** Helper to add a byte-array to the end of the payload. */
+  /* Necessary because even though ByteArray is mutable, += does not mutate it. */
+  append_ ba/ByteArray --payload=payload -> none:
+    payload += ba
+
+  /** Turns a 32 bit value into a 4xbyte byte array */
+  static to-bytes32 value/int -> ByteArray:
+    return #[(value >> 24) & 0xFF,
+      (value >> 16) & 0xFF,
+      (value >> 8)  & 0xFF,
+      value & 0xFF ]
 
 /**
 The UBX-ACK-ACK message.
@@ -2496,3 +2520,330 @@ class CfgGnss extends Message:
     block["maxTrkCh"] = uint8_ (base + BLOCK-MAXTRKCH_)
     block["flags"] = uint32_ (base + BLOCK-FLAGS_)
     return block
+
+
+
+/**
+The UBX-CFG-VALGET message.
+
+Requests one or more configuration keys; device responds with UBX-CFG-VALGET
+  response payload containing key-value pairs.
+
+Requests could give NAKs for several reasons, such as a key being unknown to the
+  receiver FW, if the layer field specifies an invalid layer to get the value
+  from, or if the keys array specifies more than 64 key IDs.
+*/
+/*
+Two request formats:
+
+Poll request format (v0):
+  U1 version (0)
+  U1 layer
+  U2 reserved
+  optional repeated:
+    U4 keyId(s)
+
+Poll request format (v1):
+  (Response format is typically v1 on newer receivers:)
+  U1 version (1)
+  U1 layer
+  U2 reserved
+  repeated:
+    U4 keyId
+    value bytes (size implied by key type)
+*/
+class CfgValGet extends Message:
+  static CLASS ::= 0x06
+  static ID    ::= 0x8B
+
+  /** The "Current Configuration". Immediate effect. See $layer. */
+  static LAYER-RAM     ::= 0x01
+  /** "Battery Backed RAM".  Effective on restart. See $layer. */
+  static LAYER-BBR     ::= 0x02
+  /** Stored in flash (if available) and effective on restart. See $layer. */
+  static LAYER-FLASH   ::= 0x04
+  /** Layer contains hard coded default values.  Non-writable. See $layer. */
+  static LAYER-DEFAULT ::= 0x07
+
+  // Max allowable requested key IDs in a single message.
+  static MAX-KEY-IDS_ ::= 64
+
+  constructor.poll --version/int=0 --layer/int=LAYER-DEFAULT --keys/ByteArray=#[]:
+    // Empty payload poll (some firmwares accept either empty or msgVer=0).
+    super.private_ Message.CFG ID (ByteArray 4)
+
+    // Version, layer, and Position.
+    put-uint8_ 0 version
+    put-uint8_ 1 layer
+    put-uint16_ 2 0
+
+    // Copy in the keys.
+    //b := ByteArray
+    //for k in keys:
+    //  b.add_uint32 k
+
+  constructor.private_ payload/ByteArray:
+    super.private_ Message.CFG ID payload
+
+  version -> int:
+    return uint8_ 0
+
+  /**
+  The layer (source) from which the configuration items should be retrieved.
+
+  In Ublox, several 'configuration layers' exist. They are separate sources of
+    Configuration Items. Some of the layers are read-only and others are
+    modifiable. Layers are organized in terms of priority. Values in a high-
+    priority layer will replace values stored in low-priority layer. On startup
+    of the receiver all configuration layers are read and the items within each
+    layer are stacked up in order to create the Current Configuration, which is
+    used by the receiver at run-time.
+
+  They are called layers in that they are 'stacked'.   Stacking of the
+    configuration items from the different layers is detailed in the manual.
+
+  To obtain the 'current configuration' for a defined item, the receiver
+    software goes through the layers above and stacks all the found items on
+    top.  Some items may not be present in every layer.  The result is the RAM
+    Layer filled with all configuration items, and their given configuration
+    values coming from the highest priority layer the corresponding item was
+    present.
+
+  One of $LAYER-RAM, $LAYER-BBR, $LAYER-FLASH, or $LAYER-DEFAULT.
+  */
+  layer -> int:
+    return uint8_ 1
+
+  /**
+  Paging value if >64 response values.
+
+  Whilst this response message type is limited to a maximum of $MAX-KEY-IDS_
+    (64) key-value pairs, if there are more than 64 possible responses the
+    'position' field can specify that the response message should skip this
+    number of key-value pairs before constructing the message. This allows a
+    large set of values to be retrieved, 64 at a time.  If the response contains
+    less than 64 key-value pairs then all values have been reported -
+    Otherwise, there may be more to read.
+  */
+  position -> int:
+    return uint16_ 2
+
+  /**
+  Parse a VALGET response payload into key->value slices.
+  */
+  static items payload -> Map:
+    output := {:}
+    if payload.size < 4: return output
+
+    version := payload[0]
+    layer := payload[1]
+    reserved := LITTLE-ENDIAN.uint16 payload 2
+
+    r := io.Reader payload
+    while r.remaining >= 4:
+      key := r.read_uint32
+      size := key_sizes.get key 0
+      if size == 0:
+        // Fallback: consume the rest (best effort).
+        v := r.read_bytes r.remaining
+        m[key] = v
+        break
+      else:
+        if r.remaining < size: break
+        m[key] = r.read_bytes size
+    return m
+
+
+/**
+The UBX-CFG-VALDEL message.
+
+Deletes keys from one or more layers (resets to default).
+
+Supports transactional usage.  If version is 0x1, the key deletions can be
+  stacked up without applying them immediately.  When complete they can be
+  applied atomically - as in either all applied, or all not applied - eg, if one
+  fails, they are all rolled back.
+
+When using transactions the following transaction states apply:
+  0 — Apply immediately, cancel any previous open transaction.
+  1 - Begin (or restart) a transaction.
+  2 - Continue building the current transaction.
+  3 - Commit the current transaction.
+*/
+/*
+Two Versions:
+  Format (v0):
+    U1 version (0)
+    U1 layers (bitmask)
+    U2 reserved
+    repeated:
+      U4 keyId
+  Format v1 (With Transations):
+    U1 version (1)
+    U1 layers (bitmask)
+    X1 transaction
+    U1 reserved
+    repeated:
+      U4 keyId
+  Format v1 (With Transations):
+*/
+class CfgValDel extends Message:
+  static CLASS ::= 0x06
+  static ID    ::= 0x8C
+
+  /** The "Current Configuration". Immediate effect. See $layer. */
+  static LAYER-RAM     ::= 0x01
+  /** "Battery Backed RAM".  Effective on restart. See $layer. */
+  static LAYER-BBR     ::= 0x02
+  /** Stored in flash (if available) and effective on restart. See $layer. */
+  static LAYER-FLASH   ::= 0x04
+  /** Layer contains hard coded default values.  Non-writable. See $layer. */
+  static LAYER-DEFAULT ::= 0x07
+
+  // Max allowable requested key IDs in a single message.
+  static MAX-KEY-IDS_ ::= 64
+
+  // Transaction states
+  /** Transaction processed immediately (default). */
+  static TRANSACTIONLESS ::= 0
+  /** Begin a new (or REstart an old) transaction. */
+  static START           ::= 1
+  /** Add more to the current transaction. */
+  static CONTINUE        ::= 2
+  /** Commit/process the compiled transaction. */
+  static COMMIT          ::= 3
+  static TRANSACTION-MASK_ ::= 0b00000011
+
+  constructor.poll --version/int=0 --layer=LAYER_RAM --keys/ByteArray=#[]
+      --transaction-state/int=TRANSACTIONLESS:
+    // Empty payload poll (some firmwares accept either empty or msgVer=0).
+    super.private_ Message.CFG ID (ByteArray 4)
+    assert: 0x0 <= version <= 0x1
+    assert: 0x0 < keys.size <= MAX-KEY-IDS_
+
+    // Calculate transaction bits
+    transaction := TRANSACTIONLESS
+    if version > 0:
+      transaction = (payload[2] & ~TRANSACTION-MASK_) | (transaction-state & TRANSACTION-MASK_)
+
+    // Version and layer. payload[2..3] is reserved if no transaction.
+    put-uint8_ 0 version
+    put-uint8_ 1 layer
+    put-uint8_ 2 transaction
+    put-uint8_ 3 0
+    append_ keys
+
+  constructor.private_ payload/ByteArray:
+    super.private_ Message.CFG ID payload
+
+  version -> int:
+    return uint8_ 0
+
+  layer -> int:
+    return uint8_ 1
+
+  transaction-state -> int:
+    return payload[2] & TRANSACTION-MASK_
+
+  static delete --version/int=0 --layer=LAYER_RAM --keys=[] -> CfgValDel:
+    key-ba := ByteArray 0
+    keys.do: | key |
+      if CfgGroupItem.is-valid key:
+        key-ba += Message.to-bytes32 key
+      else:
+        throw "Invalid key $key"
+
+    return CfgValDel.poll --version=0 --layer=layer --keys=key-ba
+
+
+
+/**
+Class for handling CFG-GROUP-ITEM.
+
+CFG-GROUP-ITEM are configuration items for use with $CfgValGet, $CfgValSet, &
+  $CfgValDel.  The structure is a 32-bit value unique Key ID.  It uniquely
+  identifies a particular configuration item. The numeric representation of the
+  Key ID uses the lower-case hexadecimal format, such as 0x20c400a1. An easier,
+  more readable text representation uses the form CFG-GROUP-ITEM. This is also
+  referred to as the (Configuration) Key Name.
+
+Class only handles parsing the identifier, not the data.
+
+*/
+class CfgGroupItem:
+  payload_ := #[]
+
+  static size-mask_  := 0b01110000_00000000_00000000_00000000
+  static group-mask_ := 0b00000000_11111111_00000000_00000000
+  static id-mask_    := 0b00000000_00000000_00001111_11111111
+
+  constructor.private_ .payload_/int:
+
+  constructor --size/int --group/int --id/int:
+    assert: 0x01 <= size <= 0x05
+    assert: 0x01 <= group <= 0xfe
+    assert: 0x001 <= id <= 0xffe
+    replace-payload_ size size-mask_
+    replace-payload_ group group-mask_
+    replace-payload_ id id-mask_
+
+  /**
+  The key's storage size identifier.  (Not the actual storage size.)
+  ```
+  0x01 = one bit. (The actual storage used is one byte, but only uses LSB.)
+  0x02 = one byte.
+  0x03 = two bytes.
+  0x04 = four bytes.
+  ```
+  */
+  size-raw -> int:
+    return read-payload_ size-mask_
+
+  /**
+  Variant of $size-raw returning the actual bytes.
+
+  Useful when parsing $CfgValGet messages.
+  */
+  size-bytes -> int:
+    if size-raw == 0x01: return 1
+    if size-raw == 0x02: return 1
+    if size-raw == 0x03: return 2
+    else: return 4
+
+  /** Configuration group identifier. */
+  group -> int:
+    return read-payload_ group-mask_
+
+  /** The configuration item ID (within the configuration group). */
+  id -> int:
+    return read-payload_ id-mask_
+
+  /** Hash code for use as an identifier in a Map. */
+  hash-code -> int:
+    return payload_
+
+  /** Sets a $value, masked by $mask, in the class $payload_. */
+  replace-payload_ value/int mask/int -> none:
+    payload_ = replace_ payload_ value mask
+
+  /** Reads the $mask, from the class $payload_. */
+  read-payload_ mask/int -> int:
+    return (payload_ >> mask.count-trailing-zeros) & mask
+
+  /** Determines if the value is valid. */
+  /* Does this by ensuring the value is not bigger than
+     01110000_11111111_00001111_11111111 (0x70FF0FFF) and by checking that
+     zeroing all mask bits equals zero. */
+  static is-valid id/int -> bool:
+    if id > 0x70FF0FFF: return false
+    if id.population-count > 23: return false
+    working := id
+    working = replace_ working 0 size-mask_
+    working = replace_ working 0 group-mask_
+    working = replace_ working 0 id-mask_
+    if working != 0: return false
+    return true
+
+  /** Sets a $value, in a $mask, in an integer $payload. */
+  static replace_ payload/int value/int mask/int -> int:
+    return (payload & ~(mask << mask.count-trailing-zeros)) | ((value & mask) << mask.count-trailing-zeros)

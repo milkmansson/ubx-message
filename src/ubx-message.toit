@@ -1257,17 +1257,20 @@ class MonVer extends Message:
     list of 30 byte entries, converted to strings.
   */
   extensions-raw -> List:
+    assert: not payload.is-empty
     raw-extensions := []
     offset := 40
     eq-pos := ?
-    while offset + 30 <= payload.size:
-      raw-extensions.add (convert-string_ offset 30)
-      offset += 30
+    if payload.size > 40:
+      while offset + 30 <= payload.size:
+        raw-extensions.add (convert-string_ offset 30)
+        offset += 30
     return raw-extensions
 
 
   /** Helper: read a '\0'-terminated string from a fixed-size field. */
   convert-string_ start length -> string:
+    assert: not payload.is-empty
     // Find first NUL within [start .. start+length).
     end := start
     limit := start + length

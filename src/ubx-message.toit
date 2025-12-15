@@ -2669,6 +2669,14 @@ When using transactions the following transaction states apply:
   1 - Begin (or restart) a transaction.
   2 - Continue building the current transaction.
   3 - Commit the current transaction.
+
+Responds with ACK/NAK.  However: ACK does not mean 'applied'. ACK-ACK means
+  "Message was syntactically valid and accepted".  It does not guarantee that
+  keys existed, values were supported, or that the transaction was committed
+  (unless action=3).
+
+Especially with transactions: TX_BEGIN, TX_CONTINUE: ACK just means "queued".
+  Only TX_COMMIT actually applies changes.
 */
 /*
 Two Versions:
@@ -2703,7 +2711,6 @@ class CfgValDel extends Message:
   // Max allowable requested key IDs in a single message.
   static MAX-KEY-IDS_ ::= 64
 
-  // Transaction states
   /** Transaction processed immediately (default). */
   static TRANSACTIONLESS ::= 0
   /** Begin a new (or REstart an old) transaction. */
@@ -2716,7 +2723,6 @@ class CfgValDel extends Message:
 
   constructor.poll --version/int=0 --layer=LAYER_RAM --keys/ByteArray=#[]
       --transaction-state/int=TRANSACTIONLESS:
-    // Empty payload poll (some firmwares accept either empty or msgVer=0).
     super.private_ Message.CFG ID (ByteArray 4)
     assert: 0x0 <= version <= 0x1
     assert: 0x0 < keys.size <= MAX-KEY-IDS_
@@ -2754,6 +2760,92 @@ class CfgValDel extends Message:
         throw "Invalid key $key"
 
     return CfgValDel.poll --version=0 --layer=layer --keys=key-ba
+
+/**
+The UBX-CFG-VALSET message.
+*/
+class CfgValSet extends Message:
+  static CLASS ::= 0x06
+  static ID    ::= 0x8A
+
+  /** The "Current Configuration". Immediate effect. See $layer. */
+  static LAYER-RAM     ::= 0x01
+  /** "Battery Backed RAM".  Effective on restart. See $layer. */
+  static LAYER-BBR     ::= 0x02
+  /** Stored in flash (if available) and effective on restart. See $layer. */
+  static LAYER-FLASH   ::= 0x04
+  /** Layer contains hard coded default values.  Non-writable. See $layer. */
+  static LAYER-DEFAULT ::= 0x07
+
+  // Max allowable requested key IDs in a single message.
+  static MAX-KEY-IDS_ ::= 64
+
+  /** Transaction processed immediately (default). */
+  static TRANSACTIONLESS ::= 0
+  /** Begin a new (or REstart an old) transaction. */
+  static START           ::= 1
+  /** Add more to the current transaction. */
+  static CONTINUE        ::= 2
+  /** Commit/process the compiled transaction. */
+  static COMMIT          ::= 3
+  static TRANSACTION-MASK_ ::= 0b00000011
+
+  constructor.poll --version/int=0 --layer=LAYER_RAM --keys/ByteArray=#[]
+      --transaction-state/int=TRANSACTIONLESS:
+    super.private_ Message.CFG ID (ByteArray 4)
+    assert: 0x0 <= version <= 0x1
+    assert: 0x0 < keys.size <= MAX-KEY-IDS_
+
+    // Calculate transaction bits
+    transaction := TRANSACTIONLESS
+    if version > 0:
+      transaction = (payload[2] & ~TRANSACTION-MASK_) | (transaction-state & TRANSACTION-MASK_)
+
+    // Version and layer. payload[2..3] is reserved if no transaction.
+    put-uint8_ 0 version
+    put-uint8_ 1 layer
+    put-uint8_ 2 transaction
+    put-uint8_ 3 0
+    append_ keys
+
+  constructor.private_ payload/ByteArray:
+    super.private_ Message.CFG ID payload
+
+  version -> int:
+    return uint8_ 0
+
+  layer -> int:
+    return uint8_ 1
+
+  transaction-state -> int:
+    return payload[2] & TRANSACTION-MASK_
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -39,14 +39,6 @@ class Message:
   */
   static MAX-MESSAGE-SIZE_ ::= 2048
 
-
-  /** The class of this message. */
-  cls /int
-  /** The ID of this message. */
-  id /int
-  /** The Payload of this message. */
-  payload /ByteArray
-
   /** The Navigation result (NAV) class byte. */
   static NAV ::= 0x01
   /** The Receiver Manager (RXM) class byte. */
@@ -299,30 +291,7 @@ class Message:
 
   }
 
-  // Fix type constants used through several messages
-
-  /** Unknown GNSS fix. */
-  static NO-FIX ::= 0
-  /** Dead reckoning only. */
-  static DEAD-RECKONING-ONLY ::= 1
-  /** 2D fix. */
-  static FIX-2D ::= 2
-  /** 3D fix. */
-  static FIX-3D ::= 3
-  /** GPS and dead reckoning. */
-  static GPS-DEAD-FIX ::= 4
-  /** Time only fix. */
-  static TIME-ONLY ::= 5
-
-  /** Lookup for Fix Type descriptions. */
-  static PACK-FIX-TYPES ::= {
-    NO-FIX: "NO-FIX",
-    DEAD-RECKONING-ONLY : "DEAD-RECKONING-ONLY",
-    FIX-2D : "FIX-2D",
-    FIX-3D : "FIX-3D",
-    GPS-DEAD-FIX : "GPS-DEAD-FIX",
-    TIME-ONLY : "TIME-ONLY",
-  }
+  // Fix type constants used through several messages.
 
   static INVALID-UBX-MESSAGE_ ::= "INVALID UBX MESSAGE"
   static RESERVED_ ::= 0
@@ -333,6 +302,7 @@ class Message:
   Devices must support at least this protocol version to use the message.
   */
   min-protver/string := "15.0"
+  static MIN-PROTVER/string := "15.0"
 
   /**
   The maximum protocol version for the message type.
@@ -340,7 +310,14 @@ class Message:
   Devices supporting protocol version newer than this may not be able to
     work with the message type.
   */
-  max-protver/string := ""
+  static MAX-PROTVER/string := ""
+
+  /** The class of this message. */
+  cls/int
+  /** The ID of this message. */
+  id/int
+  /** The Payload of this message. */
+  payload/ByteArray
 
   /** Constructs a UBX message with the given $cls, $id, and $payload. */
   constructor.private_ .cls .id .payload:
@@ -357,8 +334,6 @@ class Message:
         return AckAck.private_ payload
       else if id == AckNak.ID:
         return AckNak.private_ payload
-      else:
-        Message.private_ cls id payload
 
     if cls == Message.NAV:
       if id == NavPvt.ID:
@@ -494,9 +469,9 @@ class Message:
       return "0x$(%02x cls)"
 
   id-string_ -> string:
-    if Message.PACK-MESSAGE-TYPES.contains cls:
-      if Message.PACK-MESSAGE-TYPES[cls].contains id:
-        return Message.PACK-MESSAGE-TYPES[cls].get id
+    if Message.PACK-MESSAGE-TYPES.contains cls and
+        Message.PACK-MESSAGE-TYPES[cls].contains id:
+      return Message.PACK-MESSAGE-TYPES[cls].get id
     return "0x$(%02x id)"
 
   /** Converts object content as string. */
@@ -504,53 +479,50 @@ class Message:
   stringify -> string:
     return "UBX-$class-string_-$id-string_"
 
-  /** Hash Code for use as an identifier in a Map. */
+  /** Hash code for use as an identifier in a Map. */
   hash-code:
-    //return #[cls, id]
-    // hash-code needs to be an integer.  By these numbers we could assume
-    // cls << 8 would be ok, but I want to be sure:
-    return (cls << 16) | id
+    return payload.hash-code ^ ((cls << 16) | id)
 
-  /** Helper to return uint8 from payload index. */
+  /** Helper to return an int8 from payload index. */
   int8_ index --payload=payload -> int: return LITTLE-ENDIAN.int8 payload index
 
-  /** Helper to return uint8 from payload index. */
+  /** Helper to return an uint8 from payload index. */
   uint8_ index --payload=payload -> int: return payload[index]
 
-  /** Helper to return int16 from payload index. */
+  /** Helper to return an int16 from payload index. */
   int16_ index --payload=payload -> int: return LITTLE-ENDIAN.int16 payload index
 
-  /** Helper to return uint16 from payload index. */
+  /** Helper to return an uint16 from payload index. */
   uint16_ index --payload=payload -> int: return LITTLE-ENDIAN.uint16 payload index
 
-  /** Helper to return int32 from payload index. */
+  /** Helper to return an int32 from payload index. */
   int32_ index --payload=payload -> int: return LITTLE-ENDIAN.int32 payload index
 
-  /** Helper to return uint32 from payload index. */
+  /** Helper to return an uint32 from payload index. */
   uint32_ index --payload=payload -> int: return LITTLE-ENDIAN.uint32 payload index
 
 
-  /** Helper to insert int8 into payload index. */
+  /** Helper to insert an int8 into payload index. */
   put-int8_ index value --payload=payload -> none:
     LITTLE-ENDIAN.put-int8 payload index value
 
-  /** Helper to insert uint8 into payload index. */
+  /** Helper to insert an uint8 into payload index. */
   put-uint8_ index value --payload=payload -> none:
     payload[index] = value
 
-  /** Helper to insert int16 into payload index. */
+  /** Helper to insert an int16 into payload index. */
   put-int16_ index value --payload=payload -> none:
     LITTLE-ENDIAN.put-int16 payload index value
 
-  /** Helper to insert uint16 into payload index. */
+  /** Helper to insert an uint16 into payload index. */
   put-uint16_ index value --payload=payload -> none:
     LITTLE-ENDIAN.put-uint16 payload index value
 
-  /** Helper to insert int32 into payload index. */
+  /** Helper to insert an int32 into payload index. */
   put-int32_ index value --payload=payload -> none:
     LITTLE-ENDIAN.put-int32 payload index value
 
-  /** Helper to insert uint32 into payload index. */
+  /** Helper to insert an uint32 into payload index. */
   put-uint32_ index value --payload=payload -> none:
     LITTLE-ENDIAN.put-uint32 payload index value
 
@@ -565,6 +537,14 @@ class AckAck extends Message:
 
   /** Lowest protocol version with this message type. */
   static MIN-PROTVER ::= "12.0"
+
+  /**
+  The maximum protocol version for the message type.
+
+  Devices supporting protocol version newer than this may not be able to
+    work with the message type.
+  */
+  static MAX-PROTVER/string := ""
 
   /** Constructs a dummy acknowledge message. */
   constructor.private_ cls id:
@@ -597,6 +577,7 @@ class AckAck extends Message:
         output = Message.PACK-MESSAGE-TYPES[class-id][message-id]
     return output
 
+  /** See $super. */
   stringify -> string:
     return  "$(super.stringify): [$(class-id):$(class-id-text),$(message-id):$(message-id-text)]"
 
@@ -611,6 +592,15 @@ class AckNak extends Message:
 
   /** Lowest protocol version with this message type. */
   static MIN-PROTVER ::= "12.0"
+
+  /**
+  The maximum protocol version for the message type.
+
+  Devices supporting protocol version newer than this may not be able to
+    work with the message type.
+  */
+  static MAX-PROTVER/string := ""
+
 
   /** Constructs a dummy NAK message. */
   constructor.private_ cls id:
@@ -637,11 +627,12 @@ class AckNak extends Message:
   /** The message ID (converted to text, if known) of the acknowledged message. */
   message-id-text -> string:
     output := ""
-    if Message.PACK-MESSAGE-TYPES.contains class-id:
-      if Message.PACK-MESSAGE-TYPES[class-id].contains message-id:
-        output = Message.PACK-MESSAGE-TYPES[class-id][message-id]
+    if Message.PACK-MESSAGE-TYPES.contains class-id and
+        Message.PACK-MESSAGE-TYPES[class-id].contains message-id:
+      output = Message.PACK-MESSAGE-TYPES[class-id][message-id]
     return output
 
+  /** See $super. */
   stringify -> string:
     return  "$(super.stringify): [$(class-id):$(class-id-text),$(message-id):$(message-id-text)]"
 
@@ -654,6 +645,21 @@ Configures the rate at which messages are sent by the receiver.
 class CfgMsg extends Message:
   /** The UBX-CFG-MSG message ID. */
   static ID ::= 0x01
+
+  /**
+  The minimum protocol version for the message type.
+
+  Devices must support at least this protocol version to use the message.
+  */
+  static MIN-PROTVER/string := "15.0"
+
+  /**
+  The maximum protocol version for the message type.
+
+  Devices supporting protocol version newer than this may not be able to
+    work with the message type.
+  */
+  static MAX-PROTVER/string := ""
 
   /**
   Constructs a configuration message.
@@ -701,8 +707,20 @@ class CfgPrt extends Message:
   /** The UBX-CFG-PRT message ID. */
   static ID ::= 0x00
 
-  min-protver/string := "15.0"
-  max-protver/string := "23.0"   // Manual says not after this version.
+  /**
+  The minimum protocol version for the message type.
+
+  Devices must support at least this protocol version to use the message.
+  */
+  static MIN-PROTVER/string := "15.0"
+
+  /**
+  The maximum protocol version for the message type.
+
+  Devices supporting protocol version newer than this may not be able to
+    work with the message type.
+  */
+  static MAX-PROTVER/string := "23.0"  // Manual says not after this version.
 
   // Common constants (see u-blox docs).
   static PORT-UART1 ::= 0x01
@@ -734,11 +752,11 @@ class CfgPrt extends Message:
     can be specified via --in-proto/--out-proto.
   */
   constructor.uart
-      --port-id/int=CfgPrt.PORT-UART1
+      --port-id/int=PORT-UART1
       --baud/int=9600
-      --mode/int=CfgPrt.MODE-8N1
-      --in-proto/int=CfgPrt.PROTO-UBX
-      --out-proto/int=CfgPrt.PROTO-UBX
+      --mode/int=MODE-8N1
+      --in-proto/int=PROTO-UBX
+      --out-proto/int=PROTO-UBX
       --flags/int=0:
     super.private_ Message.CFG ID (ByteArray 20)
 
@@ -763,9 +781,11 @@ class CfgPrt extends Message:
 
   /**
   Poll the configuration for a given port.
-  The poll payload is a single byte: portID.
+
+  The poll payload is a single byte: $port-id, which must be one of
+    $PORT-UART1, or $PORT-UART2.
   */
-  constructor.poll --port-id/int=CfgPrt.PORT-UART1:
+  constructor.poll --port-id/int=PORT-UART1:
     super.private_ Message.CFG ID #[port-id]
 
   /** Construct from an incoming payload. */
@@ -810,6 +830,21 @@ class CfgRst extends Message:
   static ID ::= 0x04
 
   /**
+  The minimum protocol version for the message type.
+
+  Devices must support at least this protocol version to use the message.
+  */
+  static MIN-PROTVER/string := "15.0"
+
+  /**
+  The maximum protocol version for the message type.
+
+  Devices supporting protocol version newer than this may not be able to
+    work with the message type.
+  */
+  static MAX-PROTVER/string := ""
+
+  /**
   Constructs a reset message.
 
   The default parameters are a controlled software reset with a cold start.
@@ -832,6 +867,21 @@ The receiver navigation status.
 class NavStatus extends Message:
   /** The UBX-NAV-STATUS message ID. */
   static ID ::= 0x03
+
+  /**
+  The minimum protocol version for the message type.
+
+  Devices must support at least this protocol version to use the message.
+  */
+  static MIN-PROTVER/string := "15.0"
+
+  /**
+  The maximum protocol version for the message type.
+
+  Devices supporting protocol version newer than this may not be able to
+    work with the message type.
+  */
+  static MAX-PROTVER/string := ""
 
   /** Unknown GNSS fix. */
   static NO-FIX ::= 0
@@ -859,22 +909,15 @@ class NavStatus extends Message:
 
   /** The GPS interval time of week of the navigation epoch. */
   itow -> int:
-    assert: not payload.is-empty
     return uint32_ 0
 
   /**
-  Returns the current fix type.
+  The current fix type.
 
   One of $NO-FIX, $DEAD-RECKONING-ONLY, $FIX-2D, $FIX-3D, $GPS-DEAD-FIX, $TIME-ONLY.
   */
   gps-fix -> int:
-    assert: not payload.is-empty
     return uint8_ 4
-
-  // Thinking to remove this and have the user/driver do it via the PACK... static.
-  gps-fix-text -> string:
-    assert: not payload.is-empty
-    return Message.PACK-FIX-TYPES[gps-fix]
 
   /**
   Navigation status flags.
@@ -882,7 +925,6 @@ class NavStatus extends Message:
   See receiver specification for details.
   */
   flags -> int:
-    assert: not payload.is-empty
     return uint8_ 5
 
   /**
@@ -890,17 +932,17 @@ class NavStatus extends Message:
 
   See receiver specification for details. bit[0] = 1 if differential corrections
     are available.  Bit[7..6] carries map matching status:
-    ```
-    00: none
-    01: valid but not used, i.e. map matching data was received, but was too old
-    10: valid and used, map matching data was applied
-    11: valid and used, map matching data was applied. In case of sensor
-        unavailability map matching data enables dead reckoning. This requires
-        map matched latitude/longitude or heading data
-    ```
+
+  ```
+  00: none
+  01: valid but not used, i.e. map matching data was received, but was too old
+  10: valid and used, map matching data was applied
+  11: valid and used, map matching data was applied. In case of sensor
+      unavailability map matching data enables dead reckoning. This requires
+      map matched latitude/longitude or heading data
+  ```
   */
   fix-status -> int:
-    assert: not payload.is-empty
     return uint8_ 6
 
   /**
@@ -910,7 +952,6 @@ class NavStatus extends Message:
     spoofing detection information.  Requires PROTVER >= 18.00.
   */
   flags2 -> int:
-    assert: not payload.is-empty
     return uint8_ 7
 
   /**
@@ -922,12 +963,10 @@ class NavStatus extends Message:
   It is simply a historical value about the most recent acquisition event.
   */
   time-to-first-fix -> int:
-    assert: not payload.is-empty
     return uint32_ 8
 
   /** Milliseconds since startup or reset. (msss) */
   ms-since-startup -> int:
-    assert: not payload.is-empty
     return uint32_ 12
 
 /**
@@ -939,6 +978,21 @@ class NavSat extends Message:
   /** The UBX-NAV-SAT message ID. */
   static ID ::= 0x35
 
+  /**
+  The minimum protocol version for the message type.
+
+  Devices must support at least this protocol version to use the message.
+  */
+  static MIN-PROTVER/string := "15.0"
+
+  /**
+  The maximum protocol version for the message type.
+
+  Devices supporting protocol version newer than this may not be able to
+    work with the message type.
+  */
+  static MAX-PROTVER/string := ""
+
   constructor.private_ payload/ByteArray:
     super.private_ Message.NAV ID payload
 
@@ -947,17 +1001,14 @@ class NavSat extends Message:
 
   /** The GPS interval time of week of the navigation epoch. */
   itow -> int:
-    assert: not payload.is-empty
     return uint32_ 0
 
   /** Message version. */
   version -> int:
-    assert: not payload.is-empty
     return uint8_ 4
 
   /** Number of satellites in the message. */
   num-svs -> int:
-    assert: not payload.is-empty
     return uint8_ 5
 
   /** Number of satellites in the message. */
@@ -970,7 +1021,6 @@ class NavSat extends Message:
   The $index must satisfy 0 <= $index < $num-svs.
   */
   satellite-data index -> SatelliteData:
-    assert: not payload.is-empty
     if not 0 <= index < num-svs: throw "INVALID ARGUMENT"
     return SatelliteData index payload --src-id=ID
 
@@ -986,9 +1036,10 @@ Satellite data can be provided via UBX-NAV-SAT and/or UBX-NAV-SVINFO messages
   and layout depending on which message was the source.
 */
 class SatelliteData:
-  /** Contains the source of this Satellite entry.
+  /**
+  The source of this Satellite entry.
 
-  Content and format of fields like $flags will depend on the message source.
+  Content and format of fields like $flags depend on the message source.
   */
   source/int
 
@@ -1092,7 +1143,7 @@ class SatelliteData:
   /** Differential Correction Data is available for this satellite. */
   sv-used/bool
 
-  /** Indicates that a carrier smoothed pseudorange used.*/
+  /** Indicates that a carrier smoothed pseudorange used. */
   smoothed/bool
 
   /**
@@ -1129,7 +1180,7 @@ class SatelliteData:
       cno = LITTLE-ENDIAN.uint8 payload (offset + 10)
       elev = LITTLE-ENDIAN.int8 payload (offset + 11)
       azim = LITTLE-ENDIAN.int16 payload (offset + 12)
-      pr-res = (LITTLE-ENDIAN.int16 payload offset + 14) / 10.0 // scale 0.1
+      pr-res = (LITTLE-ENDIAN.int16 payload (offset + 14)) / 10.0 // Scale 0.1.
       flags = LITTLE-ENDIAN.uint32 payload (offset + 16)
 
       quality      = (flags & quality-mask) >> quality-mask.count-trailing-zeros
@@ -1175,7 +1226,7 @@ class SatelliteData:
       orbit-info-avail = ((flags & orbit-avail-mask) >> orbit-avail-mask.count-trailing-zeros) != 0
       smoothed         = ((flags & smoothed-mask) >> smoothed-mask.count-trailing-zeros) != 0
 
-      // In the case of NavSvInfo messages, there are only two possibl statuses.
+      // In the case of NavSvInfo messages, there are only two possible statuses.
       // In the case of NavSat, there are 3 possibilities. This binary output is
       // moved (+1) to convert its outputs to match NavSat definitions.
       unhealthy-raw  := (flags & unhealthy-mask) >> unhealthy-mask.count-trailing-zeros
@@ -1213,6 +1264,21 @@ class MonVer extends Message:
   /** The UBX-MON-VER message ID. */
   static ID ::= 0x04
 
+  /**
+  The minimum protocol version for the message type.
+
+  Devices must support at least this protocol version to use the message.
+  */
+  static MIN-PROTVER/string := "15.0"
+
+  /**
+  The maximum protocol version for the message type.
+
+  Devices supporting protocol version newer than this may not be able to
+    work with the message type.
+  */
+  static MAX-PROTVER/string := ""
+
   /** Construct a poll-request UBX-MON-VER. */
   constructor.poll:
     super.private_ Message.MON ID #[]
@@ -1245,32 +1311,28 @@ class MonVer extends Message:
   Null if this message doesn't have the extension (see $has-extension).
   */
   extension str/string -> string?:
-    extensions-raw.any:
-      if (it.index-of str) > -1:
-        return it
+    extensions-raw.do:
+      if it.contains str: return it
     return null
 
   /**
-  A list of extension strings, if present.
+  A list of extension strings.
 
   If provided by the firmware version on the device, this function obtains its
     list of 30 byte entries, converted to strings.
   */
   extensions-raw -> List:
-    assert: not payload.is-empty
     raw-extensions := []
     offset := 40
     eq-pos := ?
-    if payload.size > 40:
-      while offset + 30 <= payload.size:
-        raw-extensions.add (convert-string_ offset 30)
-        offset += 30
+    while offset + 30 <= payload.size:
+      raw-extensions.add (convert-string_ offset 30)
+      offset += 30
     return raw-extensions
 
 
   /** Helper: read a '\0'-terminated string from a fixed-size field. */
   convert-string_ start length -> string:
-    assert: not payload.is-empty
     // Find first NUL within [start .. start+length).
     end := start
     limit := start + length
@@ -1291,6 +1353,21 @@ Geodetic position solution.  Works on u-blox 6 and M8.
 */
 class NavPosLlh extends Message:
   static ID ::= 0x02
+
+  /**
+  The minimum protocol version for the message type.
+
+  Devices must support at least this protocol version to use the message.
+  */
+  static MIN-PROTVER/string := "15.0"
+
+  /**
+  The maximum protocol version for the message type.
+
+  Devices supporting protocol version newer than this may not be able to
+    work with the message type.
+  */
+  static MAX-PROTVER/string := ""
 
   static DEGREES-SCALING-FACTOR_ ::= 1e7
 
@@ -1349,6 +1426,21 @@ The UBX-NAV-SVINFO message.
 class NavSvInfo extends Message:
   static ID ::= 0x30
 
+  /**
+  The minimum protocol version for the message type.
+
+  Devices must support at least this protocol version to use the message.
+  */
+  static MIN-PROTVER/string := "15.0"
+
+  /**
+  The maximum protocol version for the message type.
+
+  Devices supporting protocol version newer than this may not be able to
+    work with the message type.
+  */
+  static MAX-PROTVER/string := ""
+
   constructor.private_ payload/ByteArray:
     super.private_ Message.NAV ID payload
 
@@ -1392,7 +1484,6 @@ class NavSvInfo extends Message:
   The $index must satisfy 0 <= $index < $num-ch.
   */
   satellite-data index -> SatelliteData:
-    assert: not payload.is-empty
     if not 0 <= index < num-ch: throw "INVALID ARGUMENT"
     return SatelliteData index payload --src-id=ID
 
@@ -1405,6 +1496,21 @@ Navigation, position, velocity, and time solution.
 class NavPvt extends Message:
   /** The UBX-NAV-PVT message ID. */
   static ID ::= 0x07
+
+  /**
+  The minimum protocol version for the message type.
+
+  Devices must support at least this protocol version to use the message.
+  */
+  static MIN-PROTVER/string := "15.0"
+
+  /**
+  The maximum protocol version for the message type.
+
+  Devices supporting protocol version newer than this may not be able to
+    work with the message type.
+  */
+  static MAX-PROTVER/string := ""
 
   /** Unknown GNSS fix. */
   static NO-FIX ::= 0
@@ -1439,12 +1545,10 @@ class NavPvt extends Message:
 
   /** The GPS interval time of week of the navigation epoch. */
   itow -> int:
-    assert: not payload.is-empty
     return uint32_ 0
 
   /** The year (UTC). */
   year -> int:
-    assert: not payload.is-empty
     return uint16_ 4
 
   /**
@@ -1452,7 +1556,6 @@ class NavPvt extends Message:
   In the range [1..12].
   */
   month -> int:
-    assert: not payload.is-empty
     return uint8_ 6
 
   /**
@@ -1460,7 +1563,6 @@ class NavPvt extends Message:
   In the range [1..31].
   */
   day -> int:
-    assert: not payload.is-empty
     return uint8_ 7
 
   /**
@@ -1468,7 +1570,6 @@ class NavPvt extends Message:
   In the range [0..23].
   */
   h -> int:
-    assert: not payload.is-empty
     return uint8_ 8
 
   /**
@@ -1476,7 +1577,6 @@ class NavPvt extends Message:
   In the range [0..59].
   */
   m -> int:
-    assert: not payload.is-empty
     return uint8_ 9
 
   /**
@@ -1484,7 +1584,6 @@ class NavPvt extends Message:
   In the range [0..60].
   */
   s -> int:
-    assert: not payload.is-empty
     return uint8_ 10
 
   /**
@@ -1492,12 +1591,10 @@ class NavPvt extends Message:
   See receiver specification for details.
   */
   valid -> int:
-    assert: not payload.is-empty
     return uint8_ 11
 
   /** Time accuracy estimate in nanoseconds */
   time-acc -> int:
-    assert: not payload.is-empty
     return uint32_ 12
 
   /**
@@ -1505,15 +1602,13 @@ class NavPvt extends Message:
   The fraction may be negative.
   */
   ns -> int:
-    assert: not payload.is-empty
     return int32_ 16
 
   /**
   The type of fix.
-  One of $NO-FIX, $DEAD-RECKONING-ONLY, $2D-FIX, $3D-FIX, $GPS-DEAD-FIX, $TIME-ONLY.
+  One of $NO-FIX, $DEAD-RECKONING-ONLY, $FIX-2D, $FIX-3D, $GPS-DEAD-FIX, $TIME-ONLY.
   */
   fix-type -> int:
-    assert: not payload.is-empty
     return uint8_ 20
 
   /**
@@ -1521,7 +1616,6 @@ class NavPvt extends Message:
   See receiver specification for details.
   */
   flags -> int:
-    assert: not payload.is-empty
     return uint8_ 21
 
   /**
@@ -1529,77 +1623,62 @@ class NavPvt extends Message:
   See receiver specification for details.
   */
   flags2 -> int:
-    assert: not payload.is-empty
     return uint8_ 22
 
   /** Number of satellites used for fix. */
   num-sv -> int:
-    assert: not payload.is-empty
     return uint8_ 23
 
   /** Longitude. */
   lon -> int:
-    assert: not payload.is-empty
     return int32_ 24
 
   /** Latitude. */
   lat -> int:
-    assert: not payload.is-empty
     return int32_ 28
 
   /** Height above ellipsoid in millimeter. */
   height -> int:
-    assert: not payload.is-empty
     return int32_ 32
 
   /** Height above mean sea level in millimeter. */
   height-msl -> int:
-    assert: not payload.is-empty
     return int32_ 36
 
   /** Horizontal accuracy in millimeter. */
   horizontal-acc -> int:
-    assert: not payload.is-empty
     return uint32_ 40
 
   /** Vertical accuracy in millimeter. */
   vertical-acc -> int:
-    assert: not payload.is-empty
     return uint32_ 44
 
   /** NED north velocity in millimeters per second. */
   north-vel -> int:
-    assert: not payload.is-empty
     return int32_ 48
 
   /** NED east velocity in millimeters per second. */
   east-vel -> int:
-    assert: not payload.is-empty
     return int32_ 52
 
   /** NED down velocity in millimeters per second. */
   down-vel -> int:
-    assert: not payload.is-empty
     return int32_ 56
 
   /** Ground speed (2D) in millimeters per second. */
   ground-speed -> int:
-    assert: not payload.is-empty
     return int32_ 60
 
   /** Heading of motion (2D). */
   heading-of-motion -> int:
-    assert: not payload.is-empty
     return int32_ 64
 
   /** Speed accuracy in millimeters per second. */
   speed-acc -> int:
-    assert: not payload.is-empty
     return uint32_ 68
 
   /** Heading accuracy. */
   heading-acc -> int:
-    assert: not payload.is-empty
     return uint32_ 72
 
   /**
@@ -1608,7 +1687,6 @@ class NavPvt extends Message:
   Position 'Dilution of Position' scale.  Scale 0.01.
   */
   position-dop -> float:
-    assert: not payload.is-empty
     return (uint16_ 76) / 100.0
 
   /**
@@ -1617,7 +1695,6 @@ class NavPvt extends Message:
   See receiver specification for details.
   */
   flags3 -> int:
-    assert: not payload.is-empty
     return uint32_ 78
 
   /**
@@ -1626,7 +1703,6 @@ class NavPvt extends Message:
   See receiver specification for details.
   */
   heading-vehicle -> int:
-    assert: not payload.is-empty
     return int32_ 84
 
   /**
@@ -1634,7 +1710,6 @@ class NavPvt extends Message:
   See receiver specification for details.
   */
   magnetic-declination -> int:
-    assert: not payload.is-empty
     return int16_ 88
 
   /**
@@ -1642,7 +1717,6 @@ class NavPvt extends Message:
   See receiver specification for details.
   */
   magnetic-acc -> int:
-    assert: not payload.is-empty
     return uint16_ 90
 
 
@@ -1655,6 +1729,21 @@ Legacy Navigation solution, in ECEF (Earth-Centered, Earth-Fixed cartesian
 */
 class NavSol extends Message:
   static ID ::= 0x06
+
+  /**
+  The minimum protocol version for the message type.
+
+  Devices must support at least this protocol version to use the message.
+  */
+  static MIN-PROTVER/string := "15.0"
+
+  /**
+  The maximum protocol version for the message type.
+
+  Devices supporting protocol version newer than this may not be able to
+    work with the message type.
+  */
+  static MAX-PROTVER/string := ""
 
   static FLAGS-GPS-FIX-OK_              ::= 0b00000001 // e.g. is within DOP & ACC Masks.
   static FLAGS-DGPS-USED-MASK_          ::= 0b00000010
@@ -1690,7 +1779,6 @@ class NavSol extends Message:
 
   /** The GPS interval time of week of the navigation epoch. */
   itow -> int:
-    assert: not payload.is-empty
     return uint32_ 0
 
   /**
@@ -1699,7 +1787,6 @@ class NavSol extends Message:
   Range in ns: -500000..+500000.
   */
   ftow -> int:
-    assert: not payload.is-empty
     return int32_ 4
 
   /**
@@ -1710,19 +1797,18 @@ class NavSol extends Message:
     get a fix.  Test for $has-valid-week before using this value.
   */
   week -> int:
-    assert: not payload.is-empty
     return int16_ 8
 
   /**
-  Whether GPS Week number is Valid. (UBX field: WKNSET.)
+  Whether GPS Week number is valid. (UBX field: WKNSET.)
 
-  See $week.  Time values should not be used until this returns True.
+  See $week.  Time values should not be used until this returns true.
   */
   has-valid-week -> bool:
     return ((flags & FLAGS-WEEK-VALID-MASK_) >> FLAGS-WEEK-VALID-MASK_.count-trailing-zeros) != 0
 
   /**
-  Whether GPS Time of Week number is Valid. (UBX field: TOWSET.)
+  Whether GPS Time of Week number is valid. (UBX field: TOWSET.)
   */
   valid-time-of-week -> bool:
     return ((flags & FLAGS-TIME-OF-WEEK-VALID-MASK_) >> FLAGS-TIME-OF-WEEK-VALID-MASK_.count-trailing-zeros) != 0
@@ -1739,10 +1825,9 @@ class NavSol extends Message:
   /**
   The type of fix.
 
-  One of $NO-FIX, $DEAD-RECKONING-ONLY, $2D-FIX, $3D-FIX, $GPS-DEAD-FIX, $TIME-ONLY.
+  One of $NO-FIX, $DEAD-RECKONING-ONLY, $FIX-2D, $FIX-3D, $GPS-DEAD-FIX, $TIME-ONLY.
   */
   fix-type -> int:
-    assert: not payload.is-empty
     return uint8_ 10
 
   /**
@@ -1751,14 +1836,12 @@ class NavSol extends Message:
   See receiver specification for details.
   */
   flags -> int:
-    assert: not payload.is-empty
     return uint8_ 11
 
   /**
   Number of satellites used for fix.
   */
   num-sv -> int:
-    assert: not payload.is-empty
     return uint8_ 47
 
   /**
@@ -1767,38 +1850,37 @@ class NavSol extends Message:
   Position 'Dilution of Position' scale.  Scale 0.01.
   */
   position-dop -> float:
-    assert: not payload.is-empty
     return (uint16_ 44).to-float / 100
 
-  /** ECEF X coordinate. [cm] */
-  ecef-x-cm  -> int: return int32_ 12      // I4 cm.
+  /** ECEF X coordinate. */
+  ecef-x-cm -> int: return int32_ 12      // I4 cm.
 
-  /** ECEF Y coordinate. [cm] */
-  ecef-y-cm  -> int: return int32_ 16      // I4 cm.
+  /** ECEF Y coordinate. */
+  ecef-y-cm -> int: return int32_ 16      // I4 cm.
 
-  /** ECEF Z coordinate. [cm] */
-  ecef-z-cm  -> int: return int32_ 20      // I4 cm.
+  /** ECEF Z coordinate. */
+  ecef-z-cm -> int: return int32_ 20      // I4 cm.
 
-  /** 3D Position Accuracy Estimate. [cm] */
-  p-acc-cm   -> int: return uint32_ 24      // U4 cm.
+  /** 3D Position Accuracy Estimate. */
+  p-acc-cm  -> int: return uint32_ 24     // U4 cm.
 
-  /** ECEF X velocity. [cm/s] */
+  /** ECEF X velocity in cm/s. */
   ecef-vx-cms -> int: return int32_ 28      // I4 cm/s.
 
-  /** ECEF Y velocity. [cm/s] */
+  /** ECEF Y velocity in cm/s. */
   ecef-vy-cms -> int: return int32_ 32      // I4 cm/s.
 
-  /** ECEF Z velocity. [cm/s] */
+  /** ECEF Z velocity in cm/s. */
   ecef-vz-cms -> int: return int32_ 36      // I4 cm/s.
 
-  /** Speed Accuracy Estimate. [cm/s] */
-  s-acc-cms   -> int: return uint32_ 40      // U4 cm/s.
+  /** Speed Accuracy Estimate in cm/s. */
+  s-acc-cms  -> int: return uint32_ 40      // U4 cm/s.
 
   /** Reserved 1. */
-  reserved1  -> int: return uint8_ 46      // U1.
+  reserved1 -> int: return uint8_ 46      // U1.
 
   /** Reserved 2. */
-  reserved2  -> int: return uint32_ 48      // U4 (M8 doc shows U1[4]; same 4 bytes).
+  reserved2 -> int: return uint32_ 48      // U4 (M8 doc shows U1[4]; same 4 bytes).
 
 /**
 The UBX-NAV-TIMEUTC message.
@@ -1807,6 +1889,21 @@ UTC time solution.  Functions on 6M and later devices.
 */
 class NavTimeUtc extends Message:
   static ID ::= 0x21
+
+  /**
+  The minimum protocol version for the message type.
+
+  Devices must support at least this protocol version to use the message.
+  */
+  static MIN-PROTVER/string := "15.0"
+
+  /**
+  The maximum protocol version for the message type.
+
+  Devices supporting protocol version newer than this may not be able to
+    work with the message type.
+  */
+  static MAX-PROTVER/string := ""
 
   static TIME-OF-WEEK-VALID-MASK_ ::= 0b00000001
   static WEEK-VALID-MASK_         ::= 0b00000010
@@ -1823,51 +1920,42 @@ class NavTimeUtc extends Message:
 
   /** The GPS interval time of week of the navigation epoch. */
   itow -> int:
-    assert: not payload.is-empty
     return uint32_ 0
 
   /** The time in UTC. */
   utc-time -> Time:
-    assert: not payload.is-empty
     return Time.utc year month day h m s --ns=ns
 
   /** UTC Time accuracy estimate, in nanoseconds. */
   time-accuracy-est -> int:
-    assert: not payload.is-empty
     return uint32_ 4
 
   /** UTC time, nanoseconds only. */
   ns -> int:
-    assert: not payload.is-empty
     return int32_ 8
 
   /** UTC time, year only. */
   year -> int:
-    assert: not payload.is-empty
     return uint16_ 12
 
   /** UTC time, month only. */
   month -> int:
-    assert: not payload.is-empty
     return uint8_ 14
 
   /** UTC time, calendar day only. */
   day -> int:
-    assert: not payload.is-empty
     return uint8_ 15
 
   /** UTC time, hours only. */
   h -> int:
-    assert: not payload.is-empty
     return uint8_ 16
 
   /** UTC time, minutes only. */
   m -> int:
-    assert: not payload.is-empty
     return uint8_ 17
 
   /**
-  Return UTC Seconds.
+  UTC Seconds.
 
   Normally 00..59, but leap seconds can produce between 59 to 61 seconds.  The
     uBlox manual states "u-blox receivers are designed to handle leap seconds in
@@ -1882,7 +1970,7 @@ class NavTimeUtc extends Message:
   /**
   Validity of time flags.
 
-  M8+: upper bits carry UTC standard
+  M8+: upper bits carry UTC standard.
   */
   valid-flags-raw -> int:
     return uint8_ 19
@@ -1961,6 +2049,21 @@ Key flag bits (common):
 */
 class CfgTp5 extends Message:
   static ID ::= 0x31
+
+  /**
+  The minimum protocol version for the message type.
+
+  Devices must support at least this protocol version to use the message.
+  */
+  static MIN-PROTVER/string := "15.0"
+
+  /**
+  The maximum protocol version for the message type.
+
+  Devices supporting protocol version newer than this may not be able to
+    work with the message type.
+  */
+  static MAX-PROTVER/string := ""
 
   // Index
   static TP-IDX-0 ::= 0
@@ -2081,6 +2184,21 @@ Payload (36 bytes):
 */
 class CfgNav5 extends Message:
   static ID ::= 0x24
+
+  /**
+  The minimum protocol version for the message type.
+
+  Devices must support at least this protocol version to use the message.
+  */
+  static MIN-PROTVER/string := "15.0"
+
+  /**
+  The maximum protocol version for the message type.
+
+  Devices supporting protocol version newer than this may not be able to
+    work with the message type.
+  */
+  static MAX-PROTVER/string := ""
 
   // Mask bits (subset).
   static DYN-MASK_      ::= 0b00000000_00000001
@@ -2258,6 +2376,21 @@ Common `gnssId` values are given by the constants `CfgGnss.GNSS-GPS`,
 */
 class CfgGnss extends Message:
   static ID ::= 0x3E
+
+  /**
+  The minimum protocol version for the message type.
+
+  Devices must support at least this protocol version to use the message.
+  */
+  static MIN-PROTVER/string := "15.0"
+
+  /**
+  The maximum protocol version for the message type.
+
+  Devices supporting protocol version newer than this may not be able to
+    work with the message type.
+  */
+  static MAX-PROTVER/string := ""
 
   // Common gnssId values.
   static GNSS-GPS      ::= 0

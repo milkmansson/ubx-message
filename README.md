@@ -28,23 +28,14 @@ version they support will be assumed this way:
 
 The implemented driver will need to determine/assume a suitable protocol version
 for the device, and provide any guardrails necessary.  The ubx-message library
-<<<<<<< HEAD
-will not perform this.  (This will be implmemented with Toit
-[ublox-gnss-driver](https://github.com/toitware/ublox-gnss-driver)).
-=======
 does not perform this.
->>>>>>> main
 
 ### Proposed logic for downlevel devices
 Devices earlier than M8 do not refer to the ubx protocol version when
 determining support - they referred to software versions.  Starting with the M8,
 the protocol was given its own versioning, which started with `15.0`.  Devices
 released before this are referred to as 'legacy', and some assumptions are made
-<<<<<<< HEAD
-about the equivalent protocol version they support
-=======
 about the equivalent protocol version they support.
->>>>>>> main
 
 The following logic is proposed for the supported protocol version, if the
 device itself does not return the information specifically in its version
@@ -67,11 +58,7 @@ else:
 ```
 
 > [!IMPORTANT]
-<<<<<<< HEAD
-> The minimum protocol version requried is stored in `MIN-PROTVER` (string) for
-=======
 > The minimum protocol version required is stored in `MIN-PROTVER` (string) for
->>>>>>> main
 > each message.  As this parser was originally written for the M8, the default
 > protocol version for all message types is **`15.0`**.
 >
@@ -88,11 +75,7 @@ else:
 > [!WARNING]
 > While the groundwork for the framework of message types and parsing is
 > complete, the exact message types you might need may not yet be implemented.
-<<<<<<< HEAD
-> This is most often largely due to a lack of hardware available to testers...
-=======
 > This is most often largely due to a lack of hardware available to testers.
->>>>>>> main
 > Please create an [issue](https://github.com/toitware/ubx-message/issues) or
 > contact on [discord](https://chat.toit.io).
 
@@ -108,7 +91,7 @@ leap seconds) and is offset from UTC by a constant number of seconds (currently
 Every new Sunday at midnight starts a new GPS week (week 1, week 2, etc) each
 of which runs for seconds (up to 604,799,999 ms in iTOW).
 
-### integer Time Of Week (iTOW) use in messages
+#### iTOW use in Messages
 All the main UBX-NAV messages (and some other messages) contain an iTOW field
 which indicates the GPS time at which the navigation epoch occurred. Messages
 with the same iTOW value can be assumed to have come from the same navigation

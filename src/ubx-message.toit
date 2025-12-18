@@ -24,6 +24,7 @@ To do list:
 
 import io
 import io show LITTLE-ENDIAN
+import io show BIG-ENDIAN
 import reader as old-reader
 
 /**
@@ -540,13 +541,6 @@ class Message:
   /* Necessary because even though ByteArray is mutable, += does not mutate it. */
   append_ ba/ByteArray --payload=payload -> none:
     payload += ba
-
-  /** Turns a 32 bit value into a 4xbyte byte array */
-  static to-bytes32 value/int -> ByteArray:
-    return #[(value >> 24) & 0xFF,
-      (value >> 16) & 0xFF,
-      (value >> 8)  & 0xFF,
-      value & 0xFF ]
 
 /**
 The UBX-ACK-ACK message.
@@ -2568,7 +2562,7 @@ class CfgValGet extends Message:
   // Max allowable requested key IDs in a single message.
   static MAX-KEY-IDS_ ::= 64
 
-  constructor.poll --version/int=0 --layer/int=LAYER-DEFAULT --keys/ByteArray=#[]:
+  constructor.poll --version/int=0 --layer/int=LAYER-DEFAULT --keys/List=[]:
     // Empty payload poll (some firmwares accept either empty or msgVer=0).
     super.private_ Message.CFG ID (ByteArray 4)
 
@@ -2599,15 +2593,13 @@ class CfgValGet extends Message:
     layer are stacked up in order to create the Current Configuration, which is
     used by the receiver at run-time.
 
-  They are called layers in that they are 'stacked'.   Stacking of the
-    configuration items from the different layers is detailed in the manual.
-
-  To obtain the 'current configuration' for a defined item, the receiver
+  They are called layers in that they are 'stacked'.   (Stacking of the
+    configuration items from the different layers is detailed in the manual.)
+    To obtain the 'current configuration' for a defined item, the receiver
     software goes through the layers above and stacks all the found items on
     top.  Some items may not be present in every layer.  The result is the RAM
     Layer filled with all configuration items, and their given configuration
-    values coming from the highest priority layer the corresponding item was
-    present.
+    values coming from the highest priority layer.
 
   One of $LAYER-RAM, $LAYER-BBR, $LAYER-FLASH, or $LAYER-DEFAULT.
   */
@@ -2615,7 +2607,7 @@ class CfgValGet extends Message:
     return uint8_ 1
 
   /**
-  Paging value if >64 response values.
+  Paging value if >64 response key/value pairs.
 
   Whilst this response message type is limited to a maximum of $MAX-KEY-IDS_
     (64) key-value pairs, if there are more than 64 possible responses the
@@ -2629,29 +2621,111 @@ class CfgValGet extends Message:
     return uint16_ 2
 
   /**
-  Parse a VALGET response payload into key->value slices.
+  Parse a VALGET response payload into a Map of key/value pairs.
+
+  This version of the code will return the number of bytes defined by the key.
+    (The returned map data is formatted as a byte array of 1, 2, or 4 bytes, as
+    determined by the key's size.)
   */
-  static items payload -> Map:
+  payload-to-map_ -> Map:
     output := {:}
     if payload.size < 4: return output
 
-    version := payload[0]
-    layer := payload[1]
-    reserved := LITTLE-ENDIAN.uint16 payload 2
+    reader := io.Reader payload
+    reader.skip 4
+    while (payload.size - reader.processed) >= 4:
+      key-raw := reader.little-endian.read-uint32
+      key := CfgGroupItem.from-value_ key-raw
+      size := key.size-bytes
 
-    r := io.Reader payload
-    while r.remaining >= 4:
-      key := r.read_uint32
-      size := key_sizes.get key 0
-      if size == 0:
-        // Fallback: consume the rest (best effort).
-        v := r.read_bytes r.remaining
-        m[key] = v
-        break
+      if size <= (payload.size - reader.processed):
+        // Todo: get output values and convert them to their native formats.
+        value-raw := reader.read-bytes size
+        output[key] = value-raw
       else:
-        if r.remaining < size: break
-        m[key] = r.read_bytes size
-    return m
+        throw "size bigger than remaining bytes"
+
+    return output
+
+  /**
+  Parse a supplied List into the required ByteArray form for polling.
+  */
+  list-to-payload_ input-map/Map -> ByteArray:
+
+    return ByteArray 0
+
+
+/**
+The UBX-CFG-VALSET message.
+
+Sets one or more configuration keys with a value.  Device responds with either
+  UBX-ACK-ACK or UBX-ACK-NAK.
+
+Requests could give NAKs for several reasons, such as a key being unknown to the
+  receiver FW, if the layer field specifies an invalid layer to get the value
+  from, or if the keys array specifies more than 64 key IDs.
+
+When using transactions, either all or none of the configuration values will be
+  set.
+*/
+class CfgValSet extends Message:
+  static CLASS ::= 0x06
+  static ID    ::= 0x8A
+
+  /** The "Current Configuration". Immediate effect. See $layer. */
+  static LAYER-RAM     ::= 0x01
+  /** "Battery Backed RAM".  Effective on restart. See $layer. */
+  static LAYER-BBR     ::= 0x02
+  /** Stored in flash (if available) and effective on restart. See $layer. */
+  static LAYER-FLASH   ::= 0x04
+  /** Layer contains hard coded default values.  Non-writable. See $layer. */
+  static LAYER-DEFAULT ::= 0x07
+
+  // Max allowable requested key IDs in a single message.
+  static MAX-KEY-IDS_ ::= 64
+
+  /** Transaction processed immediately (default). */
+  static TRANSACTIONLESS ::= 0
+  /** Begin a new (or REstart an old) transaction. */
+  static START           ::= 1
+  /** Add more to the current transaction. */
+  static CONTINUE        ::= 2
+  /** Commit/process the compiled transaction. */
+  static COMMIT          ::= 3
+  static TRANSACTION-MASK_ ::= 0b00000011
+
+  constructor.poll --version/int=0 --layer=LAYER_RAM --map/Map={:}
+      --transaction-state/int=TRANSACTIONLESS:
+    super.private_ Message.CFG ID (ByteArray 4)
+    assert: 0x0 <= version <= 0x1
+    assert: 0x0 < map.size <= MAX-KEY-IDS_
+
+    // Calculate transaction bits
+    transaction := TRANSACTIONLESS
+    if version > 0:
+      transaction = (payload[2] & ~TRANSACTION-MASK_) | (transaction-state & TRANSACTION-MASK_)
+
+    // Version and layer. payload[2..3] is reserved if no transaction.
+    put-uint8_ 0 version
+    put-uint8_ 1 layer
+    put-uint8_ 2 transaction
+    put-uint8_ 3 0
+
+    // Convert the supplied map to data.
+    append_ keys
+
+  constructor.private_ payload/ByteArray:
+    super.private_ Message.CFG ID payload
+
+  version -> int:
+    return uint8_ 0
+
+  layer -> int:
+    return uint8_ 1
+
+  transaction-state -> int:
+    return payload[2] & TRANSACTION-MASK_
+
 
 
 /**
@@ -2686,14 +2760,13 @@ Two Versions:
     U2 reserved
     repeated:
       U4 keyId
-  Format v1 (With Transations):
+  Format v1 (With Transactions):
     U1 version (1)
     U1 layers (bitmask)
     X1 transaction
     U1 reserved
     repeated:
       U4 keyId
-  Format v1 (With Transations):
 */
 class CfgValDel extends Message:
   static CLASS ::= 0x06
@@ -2721,11 +2794,10 @@ class CfgValDel extends Message:
   static COMMIT          ::= 3
   static TRANSACTION-MASK_ ::= 0b00000011
 
-  constructor.poll --version/int=0 --layer=LAYER_RAM --keys/ByteArray=#[]
+  constructor.from-byte-array --version/int=0 --layer=LAYER_RAM --key-array/ByteArray=#[]
       --transaction-state/int=TRANSACTIONLESS:
     super.private_ Message.CFG ID (ByteArray 4)
     assert: 0x0 <= version <= 0x1
-    assert: 0x0 < keys.size <= MAX-KEY-IDS_
 
     // Calculate transaction bits
     transaction := TRANSACTIONLESS
@@ -2737,79 +2809,26 @@ class CfgValDel extends Message:
     put-uint8_ 1 layer
     put-uint8_ 2 transaction
     put-uint8_ 3 0
-    append_ keys
+    append_ key-array
 
   constructor.private_ payload/ByteArray:
     super.private_ Message.CFG ID payload
 
-  version -> int:
-    return uint8_ 0
-
-  layer -> int:
-    return uint8_ 1
-
-  transaction-state -> int:
-    return payload[2] & TRANSACTION-MASK_
-
-  static delete --version/int=0 --layer=LAYER_RAM --keys=[] -> CfgValDel:
-    key-ba := ByteArray 0
-    keys.do: | key |
+  static delete --version/int=0 --layer=LAYER_RAM --key-list=[] --transaction-state/int=TRANSACTIONLESS -> CfgValDel:
+    assert: 0x0 < key-list.size <= MAX-KEY-IDS_
+    key-ba := #[]
+    key-list.do: | key |
       if CfgGroupItem.is-valid key:
-        key-ba += Message.to-bytes32 key
+        new-key := CfgGroupItem.from-value_ key
+        key-ba += new-key.to-byte-array
       else:
         throw "Invalid key $key"
 
-    return CfgValDel.poll --version=0 --layer=layer --keys=key-ba
-
-/**
-The UBX-CFG-VALSET message.
-*/
-class CfgValSet extends Message:
-  static CLASS ::= 0x06
-  static ID    ::= 0x8A
-
-  /** The "Current Configuration". Immediate effect. See $layer. */
-  static LAYER-RAM     ::= 0x01
-  /** "Battery Backed RAM".  Effective on restart. See $layer. */
-  static LAYER-BBR     ::= 0x02
-  /** Stored in flash (if available) and effective on restart. See $layer. */
-  static LAYER-FLASH   ::= 0x04
-  /** Layer contains hard coded default values.  Non-writable. See $layer. */
-  static LAYER-DEFAULT ::= 0x07
-
-  // Max allowable requested key IDs in a single message.
-  static MAX-KEY-IDS_ ::= 64
-
-  /** Transaction processed immediately (default). */
-  static TRANSACTIONLESS ::= 0
-  /** Begin a new (or REstart an old) transaction. */
-  static START           ::= 1
-  /** Add more to the current transaction. */
-  static CONTINUE        ::= 2
-  /** Commit/process the compiled transaction. */
-  static COMMIT          ::= 3
-  static TRANSACTION-MASK_ ::= 0b00000011
-
-  constructor.poll --version/int=0 --layer=LAYER_RAM --keys/ByteArray=#[]
-      --transaction-state/int=TRANSACTIONLESS:
-    super.private_ Message.CFG ID (ByteArray 4)
-    assert: 0x0 <= version <= 0x1
-    assert: 0x0 < keys.size <= MAX-KEY-IDS_
-
-    // Calculate transaction bits
-    transaction := TRANSACTIONLESS
-    if version > 0:
-      transaction = (payload[2] & ~TRANSACTION-MASK_) | (transaction-state & TRANSACTION-MASK_)
-
-    // Version and layer. payload[2..3] is reserved if no transaction.
-    put-uint8_ 0 version
-    put-uint8_ 1 layer
-    put-uint8_ 2 transaction
-    put-uint8_ 3 0
-    append_ keys
-
-  constructor.private_ payload/ByteArray:
-    super.private_ Message.CFG ID payload
+    return CfgValDel.from-byte-array
+       --version=version
+       --layer=layer
+       --key-array=key-ba
+       --transaction-state=transaction-state
 
   version -> int:
     return uint8_ 0
@@ -2819,34 +2838,6 @@ class CfgValSet extends Message:
 
   transaction-state -> int:
     return payload[2] & TRANSACTION-MASK_
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 /**
@@ -2863,13 +2854,19 @@ Class only handles parsing the identifier, not the data.
 
 */
 class CfgGroupItem:
-  payload_ := #[]
+  payload_/int := 0
 
   static size-mask_  := 0b01110000_00000000_00000000_00000000
   static group-mask_ := 0b00000000_11111111_00000000_00000000
   static id-mask_    := 0b00000000_00000000_00001111_11111111
 
-  constructor.private_ .payload_/int:
+  constructor.from-value_ .payload_/int:
+
+  constructor.from-byte-array_ payload/ByteArray:
+    // Convert the supplied 4 byte ByteArray to uint32.
+    assert: payload.size == 4
+    reader := io.Reader payload
+    payload_ = reader.little-endian.read-int32
 
   constructor --size/int --group/int --id/int:
     assert: 0x01 <= size <= 0x05
@@ -2921,6 +2918,21 @@ class CfgGroupItem:
   /** Reads the $mask, from the class $payload_. */
   read-payload_ mask/int -> int:
     return (payload_ >> mask.count-trailing-zeros) & mask
+
+  /** Returns value as a byte array for other functions to use. */
+  to-byte-array -> ByteArray:
+    return (to-bytes32 payload_)
+
+  /** Returns value as an integer for other functions to use. */
+  to-int -> int:
+    return payload_
+
+  /** Turns a 32 bit value into a 4xbyte byte array */
+  static to-bytes32 value/int -> ByteArray:
+    assert: 0 <= value <= 0xFFFF_FFFF
+    output := ByteArray 4
+    LITTLE-ENDIAN.put-uint16 output 0 value
+    return output
 
   /** Determines if the value is valid. */
   /* Does this by ensuring the value is not bigger than

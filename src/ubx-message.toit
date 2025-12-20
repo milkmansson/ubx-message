@@ -823,7 +823,7 @@ class CfgMsg extends Message:
       return "$info-str (poll)"
     out-set := []
     6.repeat:
-      out-set.add "$(port-string_ (it))=0x$(%02x payload[2 + it])"
+      out-set.add "$(port-string_ (it)):0x$(%02x payload[2 + it])"
     return "$info-str $(out-set.join "|")"
 
 /**
@@ -893,6 +893,8 @@ class CfgPrt extends Message:
   static MODE-STOP-BITS-MASK_ := 0b00011000_00000000
 
   // Common Mode Presets.
+  // Todo: expose functions to manage each part of data, stop and parity bits.
+  // For now, users can define these themselves from the manual.
   static MODE-8N1 ::= 0x000008D0
   static MODE-7E1 ::= 0x00000080
   static MODE-8O2 :=  0x000000C0
@@ -960,20 +962,68 @@ class CfgPrt extends Message:
   port-id -> int:
     return uint8_ 0
 
-  mode -> int:
+  /**
+  Returns a bitmask corresponding to the current port configuration.  (See manual.)
+  */
+  get-mode -> int:
     return uint32_ 4
 
-  baud-rate -> int:
+  /**
+  Configures a $bitmask corresponding to the port configuration.  (See manual.)
+  */
+  set-mode bitmask/int -> none:
+    assert: 0 <= bitmask <= 0xFFFFFFFF
+    put-uint32_ 4 bitmask
+
+  /**
+  Returns the configured baud rate.  (See manual.)
+  */
+  get-baud-rate -> int:
     return uint32_ 8
 
+  /**
+  Sets the baud rate.  (See manual.)
+  */
+  set-baud-rate baud/int -> none:
+    assert: 0 <= baud <= 0xFFFFFFFF
+    put-uint32_ 8 baud
+
+  /**
+  A mask describing which protocols are active for input.
+
+  Each bit of this mask is used for a protocol. Through that, multiple protocols
+    can be defined on a single port.
+  */
   in-proto-mask -> int:
     return uint16_ 12
 
+  /**
+  A mask describing which protocols are active for output.
+
+  Each bit of this mask is used for a protocol. Through that, multiple protocols
+    can be defined on a single port.
+  */
   out-proto-mask -> int:
     return uint16_ 14
 
   flags -> int:
     return uint16_ 16
+
+  /** Whether this is a poll message (1-byte payload). */
+  is-poll -> bool:
+    return payload.size == 1
+
+  /** See $super. */
+  stringify -> string:
+    info-str := "$super: {$(PACK-PORT-TYPES[port-id])}"
+    if is-poll:
+      return "$info-str (poll)"
+    out-set := []
+    out-set.add "baud-rate:$get-baud-rate"
+    out-set.add "mode:0b$(%0b get-mode)"
+    out-set.add "in-proto:0b$(%0b in-proto-mask)"
+    out-set.add "out-proto:0b$(%0b out-proto-mask)"
+    return "$info-str $(out-set.join "|")"
 
 /**
 The UBX-CFG-RST message.
@@ -1489,7 +1539,7 @@ class MonVer extends Message:
   has-extension str/string -> bool:
     return extensions-raw.any: it.contains str
 
-  /** Whether this is a poll message (1-byte payload). */
+  /** Whether this is a poll message (0-byte payload). */
   is-poll -> bool:
     return payload.size == 0
 
@@ -2791,8 +2841,8 @@ class CfgInf extends Message:
   # Warning
   Configurations present in this message overwrite the current configuration,
     not edit it.  To edit the current configuration, poll for this message, and
-    use the methods in the response message.  Then send that message back as a
-    configuration message.
+    use the methods in the response message to adjust the configuration.  Then
+    send that message back as the configuration message.
   */
   constructor --protocol-id/int=PROTO-UBX:
     assert: protocol-id == PROTO-UBX or protocol-id == PROTO-NMEA
@@ -2931,7 +2981,7 @@ class CfgInf extends Message:
       return "$info-str (poll)"
     out-set := []
     6.repeat:
-      out-set.add "$(port-string_ (it))=0x$(%02x payload[2 + it])"
+      out-set.add "$(port-string_ (it)):0x$(%02x payload[2 + it])"
     return "$info-str $(out-set.join "|")"
 
 /**

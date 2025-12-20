@@ -39,7 +39,7 @@ class Message:
   */
   static MAX-MESSAGE-SIZE_ ::= 2048
 
-  /** The Navigation result (NAV) class byte. */
+ /** The Navigation result (NAV) class byte. */
   static NAV ::= 0x01
   /** The Receiver Manager (RXM) class byte. */
   static RXM ::= 0x02
@@ -67,7 +67,8 @@ class Message:
   static SEC ::= 0x27
   /** The High-Rate Navigation Result (HNR) class byte. */
   static HNR ::= 0x28
-
+  /** The NMEA message class byte. */
+  static NMEA ::= 0xF0
   /**
   Map from class byte to its string representation.
   */
@@ -85,7 +86,8 @@ class Message:
     MGA: "MGA",
     LOG: "LOG",
     SEC: "SEC",
-    HNR: "HNR"}
+    HNR: "HNR",
+    NMEA: "NMEA"}
 
   /**
   Map from Message byte/type to its string representation.
@@ -302,6 +304,20 @@ class Message:
       0x02: "INS",
     },
 
+    // NMEA (0xF0) — All devices: Lookup Only.
+    NMEA: {
+      0x00: "GGA",
+      0x01: "GLL",
+      0x02: "GSA",
+      0x03: "GSV",
+      0x04: "RMC",
+      0x05: "VTG",
+      0x06: "GRS",
+      0x07: "GST",
+      0x08: "ZDA",
+      0x09: "GBS",
+      0x0A: "DTM",
+    },
   }
 
   // Fix type constants used through several messages.

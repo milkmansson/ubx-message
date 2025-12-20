@@ -615,7 +615,7 @@ class AckAck extends Message:
 
   /** See $super. */
   stringify -> string:
-    return  "$super: {0x$(%02x class-id)($(cls-string_ class-id)):0x$(%02x message-id)($(id-string_ class-id message-id))}"
+    return  "$super: {UBX-$(cls-string_ class-id)-$(id-string_ class-id message-id)}"
 
 /**
 The UBX-ACK-NAK message.
@@ -663,7 +663,7 @@ class AckNak extends Message:
 
   /** See $super. */
   stringify -> string:
-    return  "$super: {0x$(%02x class-id)($(cls-string_ class-id)):0x$(%02x message-id)(:$(id-string_ class-id message-id))}"
+    return  "$super: {UBX-$(cls-string_ class-id)-$(id-string_ class-id message-id)}"
 
 /**
 The UBX-CFG-MSG message.
@@ -802,15 +802,13 @@ class CfgMsg extends Message:
 
   /** See $super. */
   stringify -> string:
-    out-str := "$super"
-    info-str := "{0x$(%02x class-id)($(cls-string_ class-id)):0x$(%02x message-id)($(id-string_ class-id message-id))}"
+    info-str := "$super: {UBX-$(cls-string_ class-id)-$(id-string_ class-id message-id)}"
     if is-poll:
-      return "$out-str: (poll) $info-str"
-    out-str += ": $info-str"
+      return "$info-str (poll)"
     out-set := []
     6.repeat:
       out-set.add "$(port-string_ (it))=0x$(%02x payload[2 + it])"
-    return "$out-str $(out-set.join "|")"
+    return "$info-str $(out-set.join "|")"
 
 /**
 The UBX-CFG-PRT message.

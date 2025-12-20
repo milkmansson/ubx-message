@@ -2926,13 +2926,13 @@ class CfgInf extends Message:
 
   /** See $super. */
   stringify -> string:
-    out-str := "$super: {$(proto-string_)}"
+    info-str := "$super: {$(proto-string_)}"
     if is-poll:
-      return "$out-str (poll)"
+      return "$info-str (poll)"
+    out-set := []
     6.repeat:
-      out-str += "|$(port-string_ it)=0x$(%02x payload[4 + it])"
-    return out-str
-
+      out-set.add "$(port-string_ (it))=0x$(%02x payload[2 + it])"
+    return "$info-str $(out-set.join "|")"
 
 /**
 The UBX-INF-ERROR message.

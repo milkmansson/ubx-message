@@ -574,7 +574,7 @@ class Message:
 
   /** Helper to read a '\0'-terminated string from the payload. */
   convert-string_ start/int length/int -> string:
-    // Find first NUL within [start .. start+length].
+    // Find first '\0' within [start .. start+length].
     assert: start >= 0
     assert: length >= 0
     assert: start + length <= payload.size
@@ -1204,7 +1204,13 @@ class NavStatus extends Message:
   ms-since-startup -> int:
     return uint32_ 12
 
+  /** Whether this is a poll message (0-byte payload). */
+  is-poll -> bool:
+    return payload.size == 0
+
+  /** See $super. */
   stringify -> string:
+    if is-poll: return "$super: (poll)"
     return  "$super: fix-type:$fix-type-text|ttff:$(Duration --ms=time-to-first-fix)"
 
 /**
@@ -1965,7 +1971,13 @@ class NavPvt extends Message:
   magnetic-acc -> int:
     return uint16_ 90
 
+  /** Whether this is a poll message (0-byte payload). */
+  is-poll -> bool:
+    return payload.size == 0
+
+  /** See $super. */
   stringify -> string:
+    if is-poll: return "$super: (poll)"
     return  "$super: latitude:$(latitude-deg)|longitude:$(longitude-deg)"
 
 /**
@@ -2148,8 +2160,14 @@ class NavSol extends Message:
   /** Reserved 2. */
   reserved2 -> int: return uint32_ 48      // U4 (M8 doc shows U1[4]; same 4 bytes).
 
+  /** Whether this is a poll message (0-byte payload). */
+  is-poll -> bool:
+    return payload.size == 0
+
+  /** See $super. */
   stringify -> string:
-    return  "$super: fix-type:$fix-type-text|num-sv:$num-sv"
+    if is-poll: return "$super: (poll)"
+    return  "$super: fix:$(fix-type-text)"
 
 /**
 The UBX-NAV-TIMEUTC message.
